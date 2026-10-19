@@ -9,21 +9,60 @@ APP="build/${APP_NAME}.app"
 VERSION="1.0"
 
 ARCH="$(uname -m)"   # arm64 (Apple Silicon) oder x86_64 (Intel)
-SDK="$(xcrun --sdk macosx --show-sdk-path)"
 BIN_DIR="build/bin"
-
-# Direkt mit swiftc statt "swift build": braucht den Swift-Paketmanager
-# nicht und läuft auch, wenn dieser in den Command Line Tools defekt ist.
-echo "→ Kompiliere (Release, $ARCH) …"
+LOG="build/compile.log"
 mkdir -p "$BIN_DIR"
-xcrun swiftc \
-    -O \
-    -parse-as-library \
-    -sdk "$SDK" \
-    -target "${ARCH}-apple-macos13.0" \
-    -module-name "$APP_NAME" \
-    Sources/${APP_NAME}/*.swift \
-    -o "$BIN_DIR/$APP_NAME"
+
+compile() {
+    xcrun swiftc \
+        -O \
+        -parse-as-library \
+        -sdk "$1" \
+        -target "${ARCH}-apple-macos13.0" \
+        -module-name "$APP_NAME" \
+        Sources/${APP_NAME}/*.swift \
+        -o "$BIN_DIR/$APP_NAME"
+}
+
+# Kandidaten: ein per SDK=... vorgegebenes SDK, sonst das Standard-SDK und
+# danach alle weiteren installierten macOS-SDKs, neueste zuerst. Ältere SDKs
+# werden nur probiert, wenn das SDK nicht zum Compiler passt (halb
+# aktualisierte Command Line Tools).
+if [ -n "${SDK:-}" ]; then
+    CANDIDATES=("$SDK")
+else
+    DEFAULT_SDK="$(xcrun --sdk macosx --show-sdk-path)"
+    CANDIDATES=("$DEFAULT_SDK")
+    SDK_DIR="$(dirname "$DEFAULT_SDK")"
+    while IFS= read -r s; do
+        [ "$(cd "$s" && pwd -P)" = "$(cd "$DEFAULT_SDK" && pwd -P)" ] || CANDIDATES+=("$s")
+    done < <(ls -d "$SDK_DIR"/MacOSX[0-9]*.sdk 2>/dev/null | sort -rV)
+fi
+
+# Direkt mit swiftc statt "swift build": braucht den Swift-Paketmanager nicht.
+BUILT=0
+for CANDIDATE in "${CANDIDATES[@]}"; do
+    echo "→ Kompiliere (Release, $ARCH, SDK: $(basename "$CANDIDATE")) …"
+    if compile "$CANDIDATE" 2> "$LOG"; then
+        BUILT=1
+        break
+    fi
+    if grep -q "this SDK is not supported by the compiler" "$LOG"; then
+        echo "  SDK passt nicht zum Compiler, versuche nächstes …"
+        continue
+    fi
+    cat "$LOG" >&2
+    exit 1
+done
+
+if [ "$BUILT" -ne 1 ]; then
+    cat "$LOG" >&2
+    echo >&2
+    echo "Kein installiertes SDK passt zum Swift-Compiler." >&2
+    echo "Command Line Tools neu installieren:" >&2
+    echo "  sudo rm -rf /Library/Developer/CommandLineTools && xcode-select --install" >&2
+    exit 1
+fi
 
 echo "→ Erstelle App-Bundle …"
 rm -rf "$APP"
