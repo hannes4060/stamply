@@ -25,7 +25,8 @@ cd Stamply
 cp -R build/Stamply.app /Applications/
 ```
 
-Zum schnellen Testen ohne App-Bundle: `swift run`
+Das Skript ruft `swiftc` direkt auf und braucht den Swift-Paketmanager nicht.
+Zum schnellen Testen ohne App-Bundle geht auch `swift run` (benötigt SwiftPM).
 
 Alternativ in Xcode: `Package.swift` öffnen und auf *Run* klicken.
 

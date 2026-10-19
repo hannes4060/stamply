@@ -8,9 +8,22 @@ APP_NAME="Stamply"
 APP="build/${APP_NAME}.app"
 VERSION="1.0"
 
-echo "→ Kompiliere (Release) …"
-swift build -c release
-BIN_DIR="$(swift build -c release --show-bin-path)"
+ARCH="$(uname -m)"   # arm64 (Apple Silicon) oder x86_64 (Intel)
+SDK="$(xcrun --sdk macosx --show-sdk-path)"
+BIN_DIR="build/bin"
+
+# Direkt mit swiftc statt "swift build": braucht den Swift-Paketmanager
+# nicht und läuft auch, wenn dieser in den Command Line Tools defekt ist.
+echo "→ Kompiliere (Release, $ARCH) …"
+mkdir -p "$BIN_DIR"
+xcrun swiftc \
+    -O \
+    -parse-as-library \
+    -sdk "$SDK" \
+    -target "${ARCH}-apple-macos13.0" \
+    -module-name "$APP_NAME" \
+    Sources/${APP_NAME}/*.swift \
+    -o "$BIN_DIR/$APP_NAME"
 
 echo "→ Erstelle App-Bundle …"
 rm -rf "$APP"
